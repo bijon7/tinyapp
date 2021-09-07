@@ -1,3 +1,5 @@
+//This program lets users create and maintain short URLs for their website.
+/*********************************************************************************/
 const express = require("express");
 const cookieParser = require('cookie-parser')
 const app = express();
@@ -66,7 +68,8 @@ app.get("/urls", (req, res) => {
   // const templateVars = { urls: urlDatabase, user: users[req.cookies["user_id"]] };
   
   if (!user) {
-    res.send("You are not registered! Please register here.");
+    //res.send("You are not registered! Please register here.");
+    res.redirect("/login")
   } else {
     let urlsResult = urlsForUser(req.cookies["user_id"]); 
     console.log("RD",urlsResult);
