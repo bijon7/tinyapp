@@ -3,20 +3,18 @@
 
 const express = require("express");
 const cookieSession = require('cookie-session')
-//const cookieParser = require('cookie-parser')
+const bodyParser = require("body-parser");
+const bcrypt = require('bcryptjs');
+const { getUserByEmail } = require('./helpers.js');
 const app = express();
-//app.use(cookieParser())
+const PORT = 8080; // default port 8080
+app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cookieSession({
   name: 'session',
   keys: ["cookieSessionID"],
   maxAge: 24 * 1000000
 }));
-const PORT = 8080; // default port 8080
 app.set("view engine", "ejs");
-const bodyParser = require("body-parser");
-const bcrypt = require('bcryptjs');
-app.use(bodyParser.urlencoded({ extended: true }));
-const { getUserByEmail } = require('./helpers.js');
 
 //Generale random numbers to be used in creating short URLs and user IDs.
 function generateRandomString() {
@@ -31,9 +29,6 @@ function generateRandomString() {
 
 //Gives users data in json format.
 app.get("/users.json", (req, res) => { res.json(users); });
-
-
-
 
 //Database of short URLs with corresponding objects containing associated long URLs and user IDs.
 const urlDatabase = {
@@ -110,11 +105,20 @@ app.get("/urls/new", (req, res) => {
 
 });
 
+//Directs user to the website of the long URL.
+app.get("/u/:shortURL", (req, res) => {
+  let longURL = urlDatabase[req.params.shortURL].longURL;
+  res.redirect(`http://${longURL}`);
+});
 //Lets user enter a specific short URL as part of the requested path and displays correspnding
 //long URL with an option to update the long URL on that same page.
 app.get("/urls/:shortURL", (req, res) => {
 
-  const templateVars = { shortURL: req.params.shortURL, longURL: urlDatabase[req.params.shortURL].longURL };
+  const templateVars = {
+    user: users[req.session.user_id],
+    shortURL: req.params.shortURL,
+    longURL: urlDatabase[req.params.shortURL].longURL
+  };
   res.render("urls_show", templateVars);
 });
 //Renders registration page to a new user.
@@ -135,34 +139,48 @@ app.get("/login", (req, res) => {
 //Generates short URLs for logged in users and updates database with corresponding long URLs.
 app.post("/urls", (req, res) => {
 
-  //1. Creating a ShortURL Key
+  //Creates a ShortURL Key
   let shortURL = generateRandomString();
   //Add the new LongURL with the ShortURL in the URlDatabase
   urlDatabase[shortURL] = { longURL: req.body.longURL, userID: req.session.user_id };
 
-  res.redirect("/urls/" + shortURL); //"urls/23tx"
+  res.redirect("/urls/" + shortURL);
 
 });
 
 //Gives out options to looged in users to delete short URLs.
 app.post("/urls/:shortURL/delete", (req, res) => {
-
+  const user = users[req.session.user_id]
   const shortURL = req.params.shortURL;
-  delete urlDatabase[shortURL];
+  if (!user) {
+    res.status(403);
+  } else {
 
-  res.redirect("/urls");
+    if (user.id === urlDatabase[shortURL].userID) {
+      delete urlDatabase[shortURL];
+    }
 
+    res.redirect("/urls");
+  }
 });
 
-//Updates the long URL if necessary and brings database up to date.
+//Updates the long URL 
 app.post("/urls/:shortURL", (req, res) => {
 
+  const user = users[req.session.user_id]
   let shortURL = req.params.shortURL;
   let updatedLongURL = req.body.longURL;
-  //Update the longurl in the UrlDatabase
-  urlDatabase[shortURL] = updatedLongURL;
-  res.redirect("/urls");
+  //Checks for authentication
 
+  if (!user) {
+    res.redirect("/login");
+  } else {
+
+    if (user.id === urlDatabase[shortURL].userID) {
+      urlDatabase[shortURL].longURL = updatedLongURL;
+    }
+    res.redirect("/urls");
+  }
 });
 //Lets user log in only if the email and hashed password match.
 app.post("/login", (req, res) => {
@@ -191,7 +209,7 @@ app.post("/login", (req, res) => {
 
 app.post("/logout", (req, res) => {
 
-  res.clearCookie("user_id");
+  req.session.user_id = null;
   res.redirect("/login");
 
 });
@@ -209,7 +227,6 @@ app.post("/register", (req, res) => {
   if (getUserByEmail(email, users)) {
     res.send("Email has already been taken");
   } else {
-    //If everything is fine, we need to register with user passwords hashed and stored in database.
     const hashedPassword = bcrypt.hashSync(password, 10);
     const userID = generateRandomString();
     const user = { id: userID, email: email, password: hashedPassword };
