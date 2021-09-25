@@ -41,12 +41,12 @@ const users = {
   "userRandomID": {
     id: "userRandomID",
     email: "user@example.com",
-    password: "purple-monkey-dinosaur"
+    password: bcrypt.hashSync("purple-monkey-dinosaur", 10)
   },
   "user2RandomID": {
     id: "user2RandomID",
     email: "user2@example.com",
-    password: "dishwasher-funk"
+    password: bcrypt.hashSync("dishwasher-funk", 10)
   }
 }
 
@@ -107,19 +107,27 @@ app.get("/urls/new", (req, res) => {
 
 //Directs user to the website of the long URL.
 app.get("/u/:shortURL", (req, res) => {
-  let longURL = urlDatabase[req.params.shortURL].longURL;
-  res.redirect(`http://${longURL}`);
+  let longURL = urlDatabase[req.params.shortURL]["longURL"];
+  res.redirect(longURL);
 });
-//Lets user enter a specific short URL as part of the requested path and displays correspnding
-//long URL with an option to update the long URL on that same page.
-app.get("/urls/:shortURL", (req, res) => {
 
+//Lets owner of a short URL update the short URL to a new long URL.
+app.get("/urls/:shortURL", (req, res) => {
+  let user = users[req.session.user_id];
+  let shortURL = req.params.shortURL;
+  let longURL = urlDatabase[req.params.shortURL].longURL;
   const templateVars = {
-    user: users[req.session.user_id],
-    shortURL: req.params.shortURL,
-    longURL: urlDatabase[req.params.shortURL].longURL
+    user: user,
+    shortURL: shortURL,
+    longURL: longURL
   };
-  res.render("urls_show", templateVars);
+  //Checks if the user is the owner of the short URL and only then the update page
+  //will be displayed.
+  if (user.id === urlDatabase[shortURL].userID) {
+    res.render("urls_show", templateVars);
+  } else {
+    res.send("error 403");
+  }
 });
 //Renders registration page to a new user.
 app.get("/register", (req, res) => {
@@ -148,7 +156,8 @@ app.post("/urls", (req, res) => {
 
 });
 
-//Gives out options to looged in users to delete short URLs.
+//Gives out options to looged in users to delete short URLs. Find out the owner of user based
+// n shortURL
 app.post("/urls/:shortURL/delete", (req, res) => {
   const user = users[req.session.user_id]
   const shortURL = req.params.shortURL;
